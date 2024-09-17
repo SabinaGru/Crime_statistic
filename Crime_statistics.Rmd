@@ -1,0 +1,393 @@
+## Aufgabe Crime Statistic
+
+Im Rahmen eines nationalen Präventionsprogramms soll untersucht werden, welche Art von Verbrechen in welchen Schweizer Kantonen wie häufig vorkommen. Du bekommst die Data Science - Aufgaben des Projekts zugewiesen und sollst als erstes die [Daten des Bundesamts für Statistik](https://www.pxweb.bfs.admin.ch/pxweb/de/px-x-1903020100_101/-/px-x-1903020100_101.px/) so aufbereiten, dass sie vom Rest deines Teams für weitere Analysen genutzt werden können. 
+
+
+###
+
+Excel-Auszug der Statistiken der letzten Jahre (siehe  `Straftaten.xlsx`)
+
+
+Sicherstellen, dass:
+* allfällige fehlende Werte explizit mit NA bzw. NaN markiert sind.
+* fehlende Werte wo nötig ergänzt sind (Hinweis: Im Excel-File heissen fehlende Werte meistens, dass der erste nicht-fehlende Wert weiter oben benutzt werden soll)
+* das Jahr und die Fallzahlen als Integer oder Float vorliegen.
+
+Die Deliktgruppe ("Gruppe") steht jeweils als Straftat am Ende einer Gruppe von Straftaten und ist beginnend mit "Total" codiert. Extrahiere diese Gruppennamen sauber (ohne Total, ohne führende oder folgende Leerzeichen) und entferne die Zeilen mit "Total" in der Straftat aus den Daten.
+
+
+```{r}
+library(readxl)
+library(tidyverse)
+```
+
+
+```{r}
+file_path <- "data/Straftaten.xlsx"
+```
+
+```{r}
+df_crime <- suppressWarnings(read_excel(file_path, skip = 2, n_max = 27043 - 2))
+```
+
+```{r}
+tail(df_crime)
+```
+
+```{r}
+#df_crime <- df_crime %>% select(-1)
+df_crime <- df_crime %>% select(-c(1,3,5,7))
+```
+
+
+```{r}
+head(df_crime)
+```
+
+
+```{r}
+# Step: Set the column names
+# Assuming you want to set the column names manually based on your description
+# colnames(df_crime) <- c("Straftat", "Kanton", "Ausführungsgrad")
+
+# Step: Set names for the first three columns
+colnames(df_crime)[1:4] <- c("Straftat", "Kanton", "Ausführungsgrad", "Aufklärungsgrad")
+
+```
+
+```{r}
+head(df_crime)
+```
+
+```{r}
+# Copy Column mit start Total aus Straftat
+df <- df_crime %>%
+  mutate(Gruppe = ifelse(startsWith(Straftat, "Total"), Straftat, NA))
+```
+
+
+```{r}
+# Formatieren der Werte in Gruppe - origin 	= Total 1. Titel: Leib und Leben
+df <- df %>%
+  mutate(Gruppe = str_replace(Gruppe, "Total \\d+\\. Titel: ", ""))
+```
+
+```{r}
+df <- df %>%
+  fill(Straftat, .direction = "down") %>%
+  fill(Gruppe, .direction = "up")
+```
+
+```{r}
+# Filtern der Zeilen, die nicht mit "Total" beginnen
+df_filt <- df %>%
+  filter(!startsWith(Straftat, "Total"))
+```
+
+
+```{r}
+# Remove rows where 'Straftat' contains 'Total'
+#df <- df %>%
+#  filter(!grepl("Total", Straftat))
+```
+
+```{r}
+# bei gruppe war immer noch ein teil mit total 12... hier allgemeiner ansatz nochmals sicherheitshalber
+#df <- df %>%
+#  mutate(Gruppe = str_replace(Gruppe, "Total.*?Titel bis:\\s*", ""))
+```
+
+
+
+
+```{r}
+# Step: Fill down the NA values in the Kanton column
+df <- df_filt %>%
+  fill(Kanton, .direction = "down") %>%
+  fill(Ausführungsgrad, .direction = "down")
+```
+
+```{r}
+head(df)
+```
+
+
+```{r}
+# Step: Reshape the DataFrame to long format
+df_long <- df %>%
+  pivot_longer(
+    cols = starts_with("20"),  # Assuming the year columns start with "20"
+    names_to = "Jahr",
+    values_to = "Fallzahlen"
+  )
+```
+
+```{r}
+head(df_long)
+```
+
+
+```{r}
+# Step 3: Arrange the DataFrame if needed
+df_long <- df_long %>%
+  arrange(Kanton, Jahr)
+
+# Step 4: Print or save the transformed DataFrame
+print(df_long)
+```
+```{r}
+str(df)
+```
+
+
+###
+
+Für die Berechnung von relativen Häufigkeiten soll zusätzlich die Anzahl der Einwohner:innen pro Kanton und Jahr hinzugefügt werden. Du findest passende Daten in \texttt{einwohnerzahlen.txt}. Lese sie ein, präprozessiere sie wo nötig und füge sie an das bestehende Data Frame.
+
+**Hinweise:**
+
+* Die Kantonsbezeichnungen stimmen nicht genau mit dem ersten Datensatz überein. Passe die Kantone im eingelesenen Einwohner-Data Frame entsprechend an, indem du dir zum Beispiel einen Matching-Table baust. Ein 'Kanton' ist überflüssig.
+
+```{r}
+library(readr)
+```
+
+```{r}
+file_path_txt <- "data/einwohnerzahlen.txt"
+```
+
+```{r}
+# Einlesen der durch Semikolons getrennten Datei
+df_pop <- read_delim(file_path_txt, delim = ";", col_types = cols())
+```
+
+```{r}
+str(df_pop)
+```
+```{r}
+# Ermitteln der eindeutigen Kantone im df_crime-Datensatz und sortieren
+unique_kanton_crime <- df_long %>%
+  distinct(Kanton) %>%
+  arrange(Kanton)
+
+print(unique_kanton_crime)
+```
+
+```{r}
+unique_kanton_pop <- df_pop %>%
+  distinct(Kanton) %>%
+  arrange(Kanton)
+
+print(unique_kanton_pop)
+```
+
+entfernen des falschen Kantons Schweiz
+```{r}
+# Filtering out rows where Kanton is "Schweiz"
+df_pop <- df_pop %>%
+  filter(Kanton != "Schweiz")
+```
+
+```{r}
+unique_kanton_pop <- df_pop %>%
+  distinct(Kanton) %>%
+  arrange(Kanton)
+
+print(unique_kanton_pop)
+```
+
+```{r}
+# Anzeigen der Spaltennamen von df_population
+print(names(df_pop))
+```
+
+
+```{r}
+library(stringdist)
+library(dplyr)
+library(readr)
+
+# Erstellen der einzigartigen Kantonsnamen-Listen
+unique_kanton_crime <- unique(df_long$Kanton)
+unique_kanton_pop <- unique(df_pop$Kanton)
+
+# Berechnen der Ähnlichkeitsmatrix
+dist_matrix <- stringdistmatrix(unique_kanton_pop, unique_kanton_crime, method = "jw")
+
+# Finden der besten Übereinstimmungen
+match_indices <- apply(dist_matrix, 1, which.min)
+matched_names <- unique_kanton_crime[match_indices]
+
+# Erstellen des Matching-Tables
+matching_table <- data.frame(
+  Population = unique_kanton_pop,
+  Crime = matched_names
+)
+
+# Anzeigen des Matching-Tables
+print(matching_table)
+
+# Anwenden des Matching-Tables auf df_population
+df_pop <- df_pop %>%
+  mutate(Kanton = matching_table$Crime[match(Kanton, matching_table$Population)])
+
+# Anzeigen der aktualisierten Daten
+print(head(df_pop))
+
+```
+```{r}
+# Anzeigen der Spaltennamen von df_crime und df_population
+print(names(df_long))
+print(names(df_pop))
+```
+
+```{r}
+# Entfernen von Leerzeichen aus den Spaltennamen
+colnames(df_pop) <- trimws(colnames(df_pop))
+```
+
+```{r}
+colnames(df_pop) <- trimws(colnames(df_pop))
+df_pop <- df_pop %>%
+  mutate(across(everything(), trimws))
+
+colnames(df_long) <- trimws(colnames(df_long))
+df_long <- df_long %>%
+  mutate(across(everything(), trimws))
+
+# Sicherstellen, dass die Spalten Jahr als Charakter vorliegen
+df_pop <- df_pop %>%
+  mutate(Jahr = as.character(Jahr))
+
+df_long <- df_long %>%
+  mutate(Kanton = as.character(Kanton), Jahr = as.character(Jahr))
+
+# Join der beiden DataFrames basierend auf Kanton und Jahr
+df_combined <- df_long %>%
+  inner_join(df_pop, by = c("Kanton", "Jahr"))
+
+# Anzeigen der zusammengeführten Daten
+print(head(df_combined))
+```
+
+
+Joinen der Dataframes über Kanton und Jahr
+```{r}
+# Zusammenführen der DataFrames basierend auf den Spalten Kanton und Jahr
+df_combined <- df_long %>%
+  inner_join(df_pop, by = c("Kanton", "Jahr"))
+
+# Anzeigen der zusammengeführten Daten
+print(head(df_combined))
+```
+
+
+# ANDERES Beispiel für einen Matching-Table
+matching_table <- data.frame(
+  Original = c("Aargau", "Appenzell A. Rh.", "Appenzell I. Rh.", "Basel-Landschaft", "Basel-Stadt", "Bern", "Freiburg", "Genf", "Glarus", "Graubünden", "Jura", "Luzern", "Neuenburg"),
+  Correct = c("Aargau", "Appenzell Ausserrhoden", "Appenzell Innerrhoden", "Basel-Landschaft", "Basel-Stadt", "Bern", "Fribourg", "Geneva", "Glarus", "Graubünden", "Jura", "Lucerne", "Neuchâtel")
+)
+
+# Überprüfen, welche Kantone im df_population-Datensatz überflüssig sind
+unique_kantons_population <- unique(df_pop$Kanton)
+unique_kantons_crime <- unique(df$Kanton)
+overfluessige_kantone <- setdiff(unique_kantons_population, unique_kantons_crime)
+
+# Entfernen des überflüssigen Kantons
+df_pop <- df_pop %>%
+  filter(!Kanton %in% overfluessige_kantone)
+
+# Anwenden des Matching-Tables, um die Kantonsbezeichnungen zu aktualisieren
+df_population <- df_population %>%
+  mutate(Kanton = matching_table$Correct[match(Kanton, matching_table$Original)])
+
+# Anzeigen der aktualisierten Daten
+print(df_population)
+
+
+
+###
+
+Zur Überprüfung der Datenqualität möchtest du eine kurze Testaufgabe lösen. Dazu berechnest du die totale Anzahl der Straftaten pro 1000 Einwohner:innen pro Kanton und Jahr und visualisierst diese auf einer Zeitachse nach Kanton. Nenne zusätzlich die Top 3 der Kantone nach totalen Straftaten im Jahr 2021.
+
+**Hinweis:** Das ist aber nur ein Test, daraus kann man noch keine Schlussfolgerungen ziehen, es kann durchaus grosse Unterschiede darin geben, wie verschiedene Straftaten in verschiedenen Kantonen erfasst werden.
+
+```{r}
+str(df_combined)
+```
+
+```{r}
+# Anpassen der Datentypen - chars wo möglich in ints
+df_combined <- df_combined %>%
+  mutate(
+    Jahr = as.integer(Jahr),
+    Fallzahlen = as.integer(Fallzahlen),
+    Einwohnerzahl_Kanton = as.integer(Einwohnerzahl_Kanton)
+  )
+```
+
+
+```{r}
+# Berechnung der totalen Straftaten pro 1000 Einwohner:innen
+df_combined <- df_combined %>%
+  group_by(Kanton, Jahr) %>%
+  summarise(Totale_Straftaten = sum(Fallzahlen, na.rm = TRUE),
+            Einwohnerzahl = first(Einwohnerzahl_Kanton)) %>%
+  mutate(Straftaten_pro_1000 = (Totale_Straftaten / Einwohnerzahl) * 1000) %>%
+  ungroup()
+
+# Anzeigen der berechneten Daten
+print(head(df_combined))
+
+```
+```{r}
+# Visualisierung der Straftaten pro 1000 Einwohner:innen auf einer Zeitachse nach Kanton
+ggplot(df_combined, aes(x = Jahr, y = Straftaten_pro_1000, color = Kanton, group = Kanton)) +
+  geom_line() +
+  labs(title = "Straftaten pro 1000 Einwohner:innen nach Kanton und Jahr",
+       x = "Jahr", y = "Straftaten pro 1000 Einwohner:innen") +
+  theme_minimal()
+```
+```{r}
+library(dplyr)
+library(ggplot2)
+
+# Schritt 1: Berechne die Veränderung pro Kanton
+df_change <- df_combined %>%
+  group_by(Kanton) %>%
+  summarise(Veränderung = max(Straftaten_pro_1000, na.rm = TRUE) - min(Straftaten_pro_1000, na.rm = TRUE)) %>%
+  arrange(desc(Veränderung))
+
+# Schritt 2: Wähle die Top 5 Kantone mit der größten Veränderung
+top_5_kantone <- df_change %>%
+  slice(1:5) %>%
+  pull(Kanton)
+
+# Schritt 3: Filtere die Daten nach diesen 5 Kantonen
+df_top_5 <- df_combined %>%
+  filter(Kanton %in% top_5_kantone)
+
+# Schritt 4: Visualisiere die Straftaten pro 1000 Einwohner:innen nur für die Top 5 Kantone
+ggplot(df_top_5, aes(x = Jahr, y = Straftaten_pro_1000, color = Kanton, group = Kanton)) +
+  geom_line() +
+  labs(title = "Top 5 Kantone mit der größten Veränderung der Straftaten pro 1000 Einwohner:innen",
+       x = "Jahr", y = "Straftaten pro 1000 Einwohner:innen") +
+  theme_minimal()
+```
+
+
+```{r}
+# Finden der Top 3 Kantone nach totalen Straftaten im Jahr 2021
+top_3_kantone_2021 <- df_combined %>%
+  filter(Jahr == "2021") %>%
+  group_by(Kanton)
+  
+print(top_3_kantone_2021)
+
+```
+```{r}
+top_3_kantone_2021 <- top_3_kantone_2021 %>%
+  arrange(desc(Totale_Straftaten))
+
+head(top_3_kantone_2021)
+```
